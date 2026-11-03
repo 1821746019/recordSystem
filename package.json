@@ -8,6 +8,7 @@
     "test:core": "node tests/core.test.js",
     "test:ui": "node tests/ui-smoke.test.js",
     "test:pwa": "node tests/pwa.test.js",
+    "test:sw": "node tests/sw.test.js",
     "vendor:pinyin": "node tools/vendor-pinyin.js",
     "icons": "node tools/make-icons.js",
     "serve": "python3 -m http.server 8080"

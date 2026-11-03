@@ -155,6 +155,7 @@ recordSystem/
 │   ├── core.test.js          业务逻辑 231 项
 │   ├── ui-smoke.test.js      界面渲染与交互 161 项
 │   ├── pwa.test.js           离线能力 117 项（静态一致性 + vm 行为测试）
+│   ├── sw.test.js            Service Worker 缓存策略 28 项（真跑 install/fetch/activate）
 │   └── run.js                一次跑完（npm test）
 │
 └── docs/weapp-migration.md   微信小程序迁移指南（含可直接抄的代码）
@@ -283,7 +284,7 @@ cd recordSystem
 node tests/run.js        # 或 npm test
 ```
 
-共 **509 项**，覆盖：张数计价（含半张）与批量计算、批量记账与整批撤销、增删改查、
+共 **537 项**，覆盖：张数计价（含半张）与批量计算、批量记账与整批撤销、增删改查、
 结算/撤销/删除收款、统计口径、改价不影响历史、v1/v2→v3 迁移、导入导出往返一致性、
 **拼音转换与模糊匹配（含多音字姓氏、跨音节误命中防护）**、
 脏数据容错（缺字段/悬空外键/坏 JSON/非法张数）、各页面渲染、XSS 转义，
@@ -298,6 +299,9 @@ node tests/run.js        # 或 npm test
 - **离线能力**：`sw.js` 的预缓存清单必须覆盖 `index.html` 引用的每个文件、
   `install` 阶段不许自动 `skipWaiting`、`file://` 下不注册 SW、安卓/iOS 的两种安装提示、
   新版本「刷新」流程（`tests/pwa.test.js`，含静态一致性 + vm 行为测试）
+- **缓存策略的语义**（`tests/sw.test.js`，真跑 SW 的 install/activate/fetch/message）：
+  导航命中缓存时**必须不等网络就先返回旧版**、网络回来后**静默写回**、下次访问才看到新版；
+  静态资源同样 SWR 且带 `?v=` 也能命中；跨域和非 GET 一律不接管
 
 ---
 
@@ -383,10 +387,13 @@ https://1821746019.github.io/recordSystem/
 
 ### 更新是怎么生效的
 
-- 静态资源走 **stale-while-revalidate**：先用缓存（秒开），同时在后台拉新版写回缓存，下次启动就是新的；
+- **所有资源（包括 `index.html`）都走 stale-while-revalidate**：先用缓存**秒开**，
+  同时后台用 `cache: 'no-cache'` 校验一次（Pages 会回 304，几乎不耗流量），
+  真有新版就静默写回缓存 —— 所以**最多只陈旧一次启动**，用户无感知；
 - `sw.js` 本身每次启动都会绕过 HTTP 缓存检查；发现新版本时**不会**打断你，
   而是在底部弹一条「发现新版本 · 刷新」，你点它才切换并重载；
-- 想「立刻作废所有人的旧缓存」：把 `sw.js` 里的 `CACHE_VERSION` 改一下再发版。
+- 想「立刻作废所有人的旧缓存」：把 `sw.js` 里的 `CACHE_VERSION` 改一下再发版；
+- 缓存更新**不碰业务数据**：账本在 `localStorage`（`pps_data_v1`），和 Cache Storage 是两个仓库。
 
 ### 新增的文件
 

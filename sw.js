@@ -3,7 +3,7 @@
  * ---------------------------------------------------------------
  * 缓存策略：
  *   1. install  —— 把下面 SHELL 里的静态资源全部预缓存（离线首屏就靠它）
- *   2. 导航请求 —— 缓存优先（秒开、离线可用）
+ *   2. 导航请求 —— stale-while-revalidate：缓存秒开 + 后台校验回填
  *   3. 静态资源 —— stale-while-revalidate（先用缓存，同时后台拉新版）
  *   4. 跨域请求 —— 直接放行（本项目没有外部请求，留作保险）
  *
@@ -15,7 +15,7 @@
  */
 'use strict';
 
-var CACHE_VERSION = 'v1';
+var CACHE_VERSION = 'v2';   // 改了缓存策略/资源清单后 +1，会强制丢掉旧缓存
 var CACHE_NAME = 'print-record-' + CACHE_VERSION;
 
 /** 需要预缓存的资源（相对 Service Worker 所在目录） */
@@ -84,13 +84,34 @@ self.addEventListener('activate', function (event) {
 
 /* -------------------------- 取数据 -------------------------- */
 
-/** 导航请求：缓存优先 */
-function handleNavigate(request) {
+/**
+ * 导航请求：同样是 stale-while-revalidate
+ * ---------------------------------------------------------------
+ * 先用缓存的 index.html **秒开**，同时后台用 `cache: 'no-cache'` 校验一次
+ * （Pages 会回 304，几乎不耗流量）；真有新版本就静默写回缓存，**下次启动**生效。
+ *
+ * 为什么不能只做"缓存优先"：那样 index.html 一旦进缓存就再也不会更新，
+ * 只要某次发布只改了 HTML、没改 sw.js，用户就会一直看到旧页面。
+ *
+ * 注意这里请求的是 indexUrl（不带 query），保证缓存键稳定。
+ */
+function handleNavigate(event, request) {
   var indexUrl = new URL('index.html', self.registration.scope).href;
-  return caches.open(CACHE_NAME).then(function (cache) {
-    return cache.match(indexUrl).then(function (hit) {
-      return hit || fetch(request);
+  var cachePromise = caches.open(CACHE_NAME);
+  var networkPromise = cachePromise.then(function (cache) {
+    return fetch(indexUrl, { cache: 'no-cache' }).then(function (response) {
+      if (response && response.ok) cache.put(indexUrl, response.clone());
+      return response;
     });
+  });
+
+  // waitUntil 必须在事件分发期间同步调用，所以这里不能在 await 之后调用
+  event.waitUntil(networkPromise.catch(function () { /* 离线：忽略 */ }));
+
+  return cachePromise.then(function (cache) {
+    return cache.match(indexUrl);
+  }).then(function (hit) {
+    return hit || networkPromise;
   });
 }
 
@@ -128,7 +149,7 @@ self.addEventListener('fetch', function (event) {
 
 
   if (request.mode === 'navigate') {
-    event.respondWith(handleNavigate(request));
+    event.respondWith(handleNavigate(event, request));
     return;
   }
   event.respondWith(handleAsset(event, request));
