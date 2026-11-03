@@ -100,7 +100,11 @@ cd recordSystem
 python3 -m http.server 8080   # 浏览器打开 http://localhost:8080
 ```
 
-手机建议在浏览器菜单里选「添加到主屏幕」，就像 App 一样全屏使用，支持深色模式。
+手机上强烈建议**装成桌面 App**（PWA）：装完以后可以**完全断网使用**，全屏、无地址栏。
+安装方法见下文「[十、离线使用](#十离线使用装到手机桌面)」。
+
+> 想先跑起来看看？`file://` 双击也能用，但浏览器会把它当成「不安全来源」，
+> 部分浏览器会直接禁用 `localStorage`（账本就存不住）——只建议用来快速预览。
 
 **第一次打开**：去「设置 → 载入示例数据」看效果，确认后「清空业务数据」开始正式用。
 
@@ -111,6 +115,14 @@ python3 -m http.server 8080   # 浏览器打开 http://localhost:8080
 ```
 recordSystem/
 ├── index.html                页面骨架（只负责挂载）
+├── manifest.webmanifest      ★ PWA 清单：应用名 / 图标 / 全屏显示
+├── sw.js                     ★ Service Worker：离线缓存与更新策略
+├── icons/                    ★ 桌面图标（由 tools/make-icons.js 生成）
+│   ├── icon.svg              favicon（矢量，同一套图形）
+│   ├── icon-192.png
+│   ├── icon-512.png
+│   ├── icon-maskable-512.png 安卓自适应图标（满幅 + 安全区）
+│   └── apple-touch-icon-180.png
 ├── css/style.css             全部样式（移动端优先 + 深色模式）
 │
 ├── js/vendor/                ★ 内联的第三方库（单文件、无构建、带原许可）
@@ -132,14 +144,17 @@ recordSystem/
 │   ├── students.js           学生页
 │   ├── stats.js              统计页
 │   ├── settings.js           设置页
+│   ├── pwa.js                离线能力：注册 SW / 装到桌面 / 新版本提示
 │   └── app.js                应用外壳：底部导航 + 顶部概览 + 路由 + 视图挂载
 │
 ├── tools/
-│   └── vendor-pinyin.js      把 tiny-pinyin 打包成单文件的脚本（可重复执行）
+│   ├── vendor-pinyin.js      把 tiny-pinyin 打包成单文件的脚本（可重复执行）
+│   └── make-icons.js         生成 PWA 图标（零依赖，手写 PNG 编码）
 │
 ├── tests/                    回归测试（纯 Node，零依赖）
-│   ├── core.test.js          业务逻辑 216 项
-│   ├── ui-smoke.test.js      界面渲染与交互 117 项
+│   ├── core.test.js          业务逻辑 231 项
+│   ├── ui-smoke.test.js      界面渲染与交互 161 项
+│   ├── pwa.test.js           离线能力 117 项（静态一致性 + vm 行为测试）
 │   └── run.js                一次跑完（npm test）
 │
 └── docs/weapp-migration.md   微信小程序迁移指南（含可直接抄的代码）
@@ -268,7 +283,7 @@ cd recordSystem
 node tests/run.js        # 或 npm test
 ```
 
-共 **392 项**，覆盖：张数计价（含半张）与批量计算、批量记账与整批撤销、增删改查、
+共 **509 项**，覆盖：张数计价（含半张）与批量计算、批量记账与整批撤销、增删改查、
 结算/撤销/删除收款、统计口径、改价不影响历史、v1/v2→v3 迁移、导入导出往返一致性、
 **拼音转换与模糊匹配（含多音字姓氏、跨音节误命中防护）**、
 脏数据容错（缺字段/悬空外键/坏 JSON/非法张数）、各页面渲染、XSS 转义，
@@ -280,6 +295,9 @@ node tests/run.js        # 或 npm test
 - 页面反复重绘后，点一次「编辑」只弹 1 个弹窗（曾出现"弹好几个"）
 - 在搜索框输入 `zxm`，候选列表必须出现张小明（拼音搜索端到端）
 - **输入 `zzh,zqy` 自动勾选 3 人 → 取消郑卓涵 → 追加 `,zjb`：只多勾郑佳堡，郑卓涵保持未勾选**
+- **离线能力**：`sw.js` 的预缓存清单必须覆盖 `index.html` 引用的每个文件、
+  `install` 阶段不许自动 `skipWaiting`、`file://` 下不注册 SW、安卓/iOS 的两种安装提示、
+  新版本「刷新」流程（`tests/pwa.test.js`，含静态一致性 + vm 行为测试）
 
 ---
 
@@ -334,7 +352,67 @@ node tests/run.js        # 或 npm test
 
 ---
 
-## 十、开发提示（踩过的坑）
+## 十、离线使用（装到手机桌面）
+
+这是一个 **PWA**：第一次联网打开后，Service Worker 会把所有资源缓存到本地，
+**之后断网也能启动、记账、结算、导出**（数据本来就存在 localStorage 里）。
+
+### 怎么装
+
+| 设备 | 步骤 |
+| --- | --- |
+| **安卓（Chrome / Edge）** | 打开网页 → 底部会弹出「**装到桌面**」→ 点「安装」；也可以走菜单「安装应用 / 添加到主屏幕」 |
+| **iPhone（Safari）** | 打开网页 → 底部提示「分享 → 添加到主屏幕」→ 点 Safari 的 **分享** 按钮 → 添加到主屏幕 |
+| **电脑 Chrome** | 地址栏右侧的「安装」图标 |
+
+装好从桌面图标进入是**全屏、无地址栏**的，和原生 App 没区别。
+
+> **两个前提**
+> 1. 必须是 `https://` **或** `localhost`。`file://` 双击打开时浏览器**禁止**注册 Service Worker，
+>    `pwa.js` 会静默跳过（页面照常能用，但没有离线缓存，`localStorage` 也可能被禁用）。
+> 2. 局域网 `http://192.168.x.x` 同理，不属于安全上下文，装不了。
+
+### 部署到 GitHub Pages
+
+`Settings → Pages → Source` 选 **Deploy from a branch**，分支 `main` + `/ (root)`，保存。
+等一两分钟，手机打开就能装：
+
+```
+https://1821746019.github.io/recordSystem/
+```
+
+### 更新是怎么生效的
+
+- 静态资源走 **stale-while-revalidate**：先用缓存（秒开），同时在后台拉新版写回缓存，下次启动就是新的；
+- `sw.js` 本身每次启动都会绕过 HTTP 缓存检查；发现新版本时**不会**打断你，
+  而是在底部弹一条「发现新版本 · 刷新」，你点它才切换并重载；
+- 想「立刻作废所有人的旧缓存」：把 `sw.js` 里的 `CACHE_VERSION` 改一下再发版。
+
+### 新增的文件
+
+| 文件 | 作用 |
+| --- | --- |
+| `manifest.webmanifest` | 应用名、图标、`display: standalone`、主题色 |
+| `sw.js` | 预缓存清单 + 缓存策略（导航缓存优先、资源 SWR） |
+| `js/ui/pwa.js` | 注册 SW、安装提示、iOS 提示、新版本刷新提示 |
+| `icons/*.png`、`icons/icon.svg` | 桌面图标（192 / 512 / maskable / apple-touch） |
+| `tools/make-icons.js` | 图标生成脚本（零依赖，手写 PNG 编码，`npm run icons`） |
+
+> ⚠️ 新增或删除源文件时，**记得同步 `sw.js` 里的 `SHELL` 数组**，否则离线会缺文件。
+> `tests/pwa.test.js` 会拿 `index.html` 里的引用逐条比对，漏了直接测试失败。
+
+### 数据安全（这条比离线更重要）
+
+PWA 只解决「断网也能打开」，**不解决「数据不会丢」**：
+
+- iOS 对「没装到桌面」的网站在 7 天不访问后会清理存储；装到桌面后不受这个限制；
+- 安卓清理浏览器数据、卸载浏览器、换手机，localStorage 一样会没；
+- 所以：**正式用之前先「备份为 JSON」一次练手，之后建议每周备份一次**（存网盘/发给自己都行）。
+  恢复时用「设置 → 从 JSON 恢复」，支持「覆盖」和「合并」两种模式。
+
+---
+
+## 十一、开发提示（踩过的坑）
 
 1. **凡是依赖"当前选择/当前输入"的文案，都要在 `updateCalc()` 里手动同步**。
    勾选学生、点 `+ / −`、点快捷数字都只改 state、**不触发整页重绘**，
@@ -366,10 +444,16 @@ node tests/run.js        # 或 npm test
 10. **张数可能是 0.5 的倍数**：任何累加/统计都**不能用 `parseInt`/`Utils.toInt`**，
    要用 `Number(x)` 或 `Pricing.toSheets()`；展示统一走 `U.qty()`（15 → "15"，15.5 → "15.5"）。
    金额相加仍用「分」整数，`Pricing.calculate` 里已带 `Math.round`。
+11. **PWA 有三个坑**（都在 `tests/pwa.test.js` 里锁着）：
+    - 新增源文件必须同步 `sw.js` 的 `SHELL`，否则**离线时会缺文件**（联网时完全看不出问题）；
+    - **不要在 `install` 里 `skipWaiting()`**：用户正记着账、资源被换掉会白屏；
+      正确做法是 `pwa.js` 弹「新版本 · 刷新」，用户点了才切换；
+    - `file://` 和局域网 `http://` 不是安全上下文，SW **不会**注册（也不该尝试），
+      `pwa.js` 里用 `isSecure()` 提前跳过，别把这个判断删了。
 
 ---
 
-## 十一、许可
+## 十二、许可
 
 本项目管理代码：MIT。
 

@@ -6,6 +6,7 @@
 
 require('./core.test.js');
 require('./ui-smoke.test.js');
+require('./pwa.test.js');
 
 process.on('exit', function (code) {
   console.log('\n全部测试结束。');

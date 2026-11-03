@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="学生打印记录系统">
+  <rect width="512" height="512" rx="112" fill="#4f6ef7"/>
+  <!-- 进纸 -->
+  <rect x="156" y="86" width="200" height="86" rx="8" fill="#ffffff"/>
+  <!-- 机身 -->
+  <rect x="96" y="168" width="320" height="158" rx="26" fill="#1b2a63"/>
+  <!-- 出纸口 -->
+  <rect x="138" y="206" width="236" height="26" rx="6" fill="#0b1338"/>
+  <!-- 出纸 -->
+  <rect x="146" y="306" width="220" height="112" rx="8" fill="#ffffff"/>
+  <rect x="170" y="334" width="172" height="10" rx="4" fill="#b9c6f0"/>
+  <rect x="170" y="356" width="132" height="10" rx="4" fill="#b9c6f0"/>
+  <rect x="170" y="378" width="156" height="10" rx="4" fill="#b9c6f0"/>
+</svg>

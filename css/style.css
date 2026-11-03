@@ -828,3 +828,44 @@ select.input { background-image: none; }
   .amount { font-size: 34px; }
   .tab-label { font-size: 10px; }
 }
+
+/* ------------------- PWA 安装 / 更新提示条（js/ui/pwa.js） ------------------- */
+
+.pwa-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  /* 落在底部导航栏上方，并给 iPhone 的 Home 横条留出安全区 */
+  bottom: calc(var(--tabbar-h) + 10px + env(safe-area-inset-bottom, 0px));
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  animation: pwa-bar-in .22s ease-out;
+}
+
+.pwa-bar-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.pwa-bar-text b { font-weight: 700; }
+
+.pwa-bar .mini-btn { flex: 0 0 auto; white-space: nowrap; }
+
+@keyframes pwa-bar-in {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pwa-bar { animation: none; }
+}
