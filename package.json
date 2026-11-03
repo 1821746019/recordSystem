@@ -10,7 +10,9 @@
     "test:pwa": "node tests/pwa.test.js",
     "test:sw": "node tests/sw.test.js",
     "vendor:pinyin": "node tools/vendor-pinyin.js",
-    "icons": "node tools/make-icons.js",
+    "icons:emoji": "node tools/render-emoji-icon.js apply",
+    "icons:preview": "node tools/render-emoji-icon.js compose",
+    "icons:fallback": "node tools/make-icons.js",
     "serve": "python3 -m http.server 8080"
   },
   "keywords": ["打印", "记录", "计价", "记账", "微信小程序"],

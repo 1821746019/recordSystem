@@ -117,12 +117,13 @@ recordSystem/
 ├── index.html                页面骨架（只负责挂载）
 ├── manifest.webmanifest      ★ PWA 清单：应用名 / 图标 / 全屏显示
 ├── sw.js                     ★ Service Worker：离线缓存与更新策略
-├── icons/                    ★ 桌面图标（由 tools/make-icons.js 生成）
+├── icons/                    ★ 桌面图标（由 tools/render-emoji-icon.js 从 Twemoji 矢量稿烘焙）
 │   ├── icon.svg              favicon（矢量，同一套图形）
 │   ├── icon-192.png
 │   ├── icon-512.png
 │   ├── icon-maskable-512.png 安卓自适应图标（满幅 + 安全区）
-│   └── apple-touch-icon-180.png
+│   ├── apple-touch-icon-180.png
+│   └── twemoji.LICENSE       图形来源的 CC-BY 4.0 许可原文
 ├── css/style.css             全部样式（移动端优先 + 深色模式）
 │
 ├── js/vendor/                ★ 内联的第三方库（单文件、无构建、带原许可）
@@ -148,8 +149,9 @@ recordSystem/
 │   └── app.js                应用外壳：底部导航 + 顶部概览 + 路由 + 视图挂载
 │
 ├── tools/
-│   ├── vendor-pinyin.js      把 tiny-pinyin 打包成单文件的脚本（可重复执行）
-│   └── make-icons.js         生成 PWA 图标（零依赖，手写 PNG 编码）
+│   ├── vendor-pinyin.js       把 tiny-pinyin 打包成单文件的脚本（可重复执行）
+│   ├── render-emoji-icon.js   现用：把 Twemoji 矢量稿烘焙成 icons/（需一次浏览器渲染）
+│   └── make-icons.js          备选：纯几何图形的图标生成器（零依赖，手写 PNG 编码）
 │
 ├── tests/                    回归测试（纯 Node，零依赖）
 │   ├── core.test.js          业务逻辑 231 项
@@ -402,8 +404,23 @@ https://1821746019.github.io/recordSystem/
 | `manifest.webmanifest` | 应用名、图标、`display: standalone`、主题色 |
 | `sw.js` | 预缓存清单 + 缓存策略（导航缓存优先、资源 SWR） |
 | `js/ui/pwa.js` | 注册 SW、安装提示、iOS 提示、新版本刷新提示 |
-| `icons/*.png`、`icons/icon.svg` | 桌面图标（192 / 512 / maskable / apple-touch） |
-| `tools/make-icons.js` | 图标生成脚本（零依赖，手写 PNG 编码，`npm run icons`） |
+| `icons/*.png`、`icons/icon.svg` | 桌面图标 + favicon（192 / 512 / maskable / apple-touch） |
+| `tools/render-emoji-icon.js` | 图标烘焙脚本（`npm run icons:emoji`，需一次浏览器渲染） |
+
+### 图标为什么不直接用标题栏那个 emoji？
+
+页面左上角是 `<span class="brand-icon">🖨️</span>`，那是一个**字符**，不是图片。它没法直接当图标用，原因有三：
+
+1. `manifest.icons[].src` 只能指向图片文件（PNG/SVG），没有语法能表达「渲染这个字符」；
+2. 同一个码点，安卓是 Noto Color Emoji、iOS 是 Apple Color Emoji、Windows 是 Segoe——
+   **三套完全不同的画**，还随系统版本变；桌面图标必须是「定死的一张图」；
+3. Apple Color Emoji 是专有字体（不可随项目分发），安卓的 Noto 是**位图**字体，放大到 512 会糊。
+
+所以做法是：取 [Twemoji](https://github.com/jdecked/twemoji) 的**矢量稿**（同一个打印机图形、跨平台一致），
+在浏览器里按 1024×1024 原生栅格化（矢量放大不糊）→ 按 alpha 包围盒等比缩放 → 合成到品牌蓝圆角底上，
+最后输出 PNG，并把同样的路径内联成矢量 `icon.svg` 当 favicon。图形许可 CC-BY 4.0，见 `icons/twemoji.LICENSE`。
+
+想改回纯几何图形：`npm run icons:fallback`。
 
 > ⚠️ 新增或删除源文件时，**记得同步 `sw.js` 里的 `SHELL` 数组**，否则离线会缺文件。
 > `tests/pwa.test.js` 会拿 `index.html` 里的引用逐条比对，漏了直接测试失败。
@@ -467,3 +484,7 @@ PWA 只解决「断网也能打开」，**不解决「数据不会丢」**：
 内联的第三方库 `js/vendor/tiny-pinyin.js`：MIT，版权归其作者
 （[creeperyang/pinyin](https://github.com/creeperyang/pinyin)），许可原文见
 [`js/vendor/tiny-pinyin.LICENSE`](js/vendor/tiny-pinyin.LICENSE)。
+
+**图标图形**来自 [Twemoji](https://github.com/jdecked/twemoji)（🖨️ printer），
+遵循 **CC-BY 4.0**，许可原文见 [`icons/twemoji.LICENSE`](icons/twemoji.LICENSE)。
+蓝色圆角底、尺寸与排版由本项目生成。
