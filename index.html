@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#4f6ef7">
+  <meta name="description" content="学生打印记录系统：记录每次打印的单面/双面张数，自动计价、结算与统计">
+  <title>学生打印记录系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-icon">🖨️</span>
+        <div class="brand-text">
+          <h1 id="shop-name">打印记录系统</h1>
+          <p id="price-desc">0.30 元 / 张</p>
+        </div>
+      </div>
+      <button type="button" class="icon-btn" data-tab="settings" aria-label="设置">⚙️</button>
+    </header>
+
+    <main id="view" class="view"></main>
+
+    <nav class="tabbar" id="tabbar" aria-label="主导航"></nav>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+
+  <!-- 第三方库（已内联为单文件，见 tools/vendor-pinyin.js 与 js/vendor/*.LICENSE） -->
+  <script src="js/vendor/tiny-pinyin.js"></script>
+
+  <!-- 核心逻辑层（无 DOM 依赖，可直接迁移到微信小程序） -->
+  <script src="js/core/utils.js"></script>
+  <script src="js/core/pricing.js"></script>
+  <script src="js/core/pinyin.js"></script>
+  <script src="js/core/storage.js"></script>
+  <script src="js/core/store.js"></script>
+
+  <!-- 界面层（迁移小程序时替换为 WXML/WXSS） -->
+  <script src="js/ui/dom.js"></script>
+  <script src="js/ui/actions.js"></script>
+  <script src="js/ui/quick.js"></script>
+  <script src="js/ui/records.js"></script>
+  <script src="js/ui/students.js"></script>
+  <script src="js/ui/stats.js"></script>
+  <script src="js/ui/settings.js"></script>
+  <script src="js/ui/app.js"></script>
+</body>
+</html>

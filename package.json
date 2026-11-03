@@ -1,0 +1,15 @@
+{
+  "name": "student-print-record-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "学生打印记录系统：记录单面/双面打印张数，自动计价、结算与统计。核心逻辑与界面分离，便于迁移到微信小程序。",
+  "scripts": {
+    "test": "node tests/run.js",
+    "test:core": "node tests/core.test.js",
+    "test:ui": "node tests/ui-smoke.test.js",
+    "vendor:pinyin": "node tools/vendor-pinyin.js",
+    "serve": "python3 -m http.server 8080"
+  },
+  "keywords": ["打印", "记录", "计价", "记账", "微信小程序"],
+  "license": "MIT"
+}
