@@ -44,6 +44,10 @@
     html += '    <input class="input" id="s-keyword" type="search" placeholder="姓名 / 拼音 / 首字母 / 班级 / 学号" value="' + DOM.esc(state.keyword) + '">';
     html += '    <button type="button" class="btn btn-primary btn-sm" data-action="add">＋ 新建</button>';
     html += '  </div>';
+    html += '  <div class="btn-row">';
+    html += '    <button type="button" class="btn btn-soft btn-sm" data-action="import-csv">导入名单</button>';
+    html += '    <button type="button" class="btn btn-soft btn-sm" data-action="export-csv">导出名单</button>';
+    html += '  </div>';
     html += '  <div class="chips">' + SORTS.map(function (s) {
       return '<button type="button" class="chip' + (state.sort === s.key ? ' active' : '') +
         '" data-action="sort" data-key="' + s.key + '">' + s.label + '</button>';
@@ -145,6 +149,84 @@
 
     DOM.on(rootEl, 'click', '[data-action="add"]', function () {
       Actions.openStudentEdit(ctx, null);
+    });
+
+    /* ---------- 名单导出 ---------- */
+    DOM.on(rootEl, 'click', '[data-action="export-csv"]', function () {
+      var all = store.listStudents();
+      if (!all.length) {
+        DOM.toast('还没有学生可导出', 'error');
+        return;
+      }
+      DOM.download('学生名单_' + U.todayString() + '.csv', store.exportStudentsRoster(), 'text/csv;charset=utf-8');
+      DOM.toast('已导出 ' + all.length + ' 名学生的名单', 'success');
+    });
+
+    /* ---------- 名单导入（先预览，再落库） ---------- */
+    DOM.on(rootEl, 'click', '[data-action="import-csv"]', function () {
+      DOM.pickTextFile('.csv,.txt,text/csv,text/plain').then(function (file) {
+        var preview;
+        try {
+          preview = store.previewStudentsCSV(file.text);
+        } catch (err) {
+          DOM.toast(err.message || '文件解析失败', 'error');
+          return;
+        }
+
+        var fresh = preview.valid.length - preview.duplicates;
+        var invalid = preview.invalid || [];
+        var invalidHtml = '';
+        if (invalid.length) {
+          invalidHtml = '<div class="hint" style="color:var(--danger)">有 ' + invalid.length + ' 行没读进来：' +
+            invalid.slice(0, 5).map(function (x) {
+              return '第 ' + x.line + ' 行' + DOM.esc(x.reason);
+            }).join('；') +
+            (invalid.length > 5 ? ' …' : '') + '</div>';
+        }
+
+        DOM.openModal({
+          title: '导入学生名单',
+          okText: '确认导入',
+          content:
+            '<div class="form">' +
+              '<p class="confirm-text">文件：' + DOM.esc(file.name) + '</p>' +
+              '<div class="mini-list">' +
+                '<div class="mini-row"><span>数据行</span><span></span><span>' + preview.total + ' 行</span></div>' +
+                '<div class="mini-row"><span>将新增</span><span></span><span>' + fresh + ' 人</span></div>' +
+                '<div class="mini-row"><span>库里已有</span><span></span><span>' + preview.duplicates + ' 人</span></div>' +
+                (invalid.length
+                  ? '<div class="mini-row"><span>读不懂</span><span></span><span>' + invalid.length + ' 行</span></div>'
+                  : '') +
+              '</div>' +
+              '<label class="field"><span>已存在的学生怎么处理</span><select class="input" id="st-mode">' +
+                '<option value="skip">跳过（保留现有档案）</option>' +
+                '<option value="update">更新（用名单里的电话 / 学号 / 备注覆盖非空项）</option>' +
+              '</select></label>' +
+              (preview.hasHeader
+                ? '<div class="hint">已按表头识别列（姓名 / 班级 / 学号 / 电话 / 备注，顺序随意）。</div>'
+                : '<div class="hint">没识别到表头，按「姓名, 班级, 学号, 电话, 备注」的列顺序读取。</div>') +
+              invalidHtml +
+            '</div>',
+          onOk: function (rootEl2) {
+            try {
+              var result = store.importStudentsCSV(file.text, {
+                mode: DOM.qs('#st-mode', rootEl2).value
+              });
+              DOM.toast(
+                '导入完成：新增 ' + result.added + ' · 更新 ' + result.updated + ' · 跳过 ' + result.skipped,
+                'success', 3000
+              );
+              app.refresh();
+            } catch (err) {
+              DOM.toast(err.message || '导入失败', 'error');
+              return false;
+            }
+            return true;
+          }
+        });
+      }).catch(function (err) {
+        if (err && err.message !== '未选择文件') DOM.toast(err.message || '读取失败', 'error');
+      });
     });
 
     DOM.on(rootEl, 'click', '[data-action="detail"]', function (e, btn) {

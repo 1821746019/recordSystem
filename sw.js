@@ -15,7 +15,7 @@
  */
 'use strict';
 
-var CACHE_VERSION = 'v3';   // 改了缓存策略/资源清单/图标后 +1，会强制丢掉旧缓存
+var CACHE_VERSION = 'v4';   // 改了缓存策略/资源清单/图标后 +1，会强制丢掉旧缓存
 var CACHE_NAME = 'print-record-' + CACHE_VERSION;
 
 /** 需要预缓存的资源（相对 Service Worker 所在目录） */

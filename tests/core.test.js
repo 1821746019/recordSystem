@@ -525,8 +525,141 @@ ok('元转分（含符号/字符串）',
 ok('分转元', U.fenToYuan(30) === '0.30' && U.fenToYuan(0) === '0.00' && U.fenToYuan(1234) === '12.34');
 ok('HTML 转义', U.escapeHtml('<img src=x>').indexOf('&lt;') === 0);
 
-/* ================================================================ */
+/* ================================================================
+ * 14. 学生名册 CSV（解析 / 导出 / 预览 / 导入）
+ * ================================================================ */
+section('14. 学生名册 CSV：解析');
 
+ok('CSV：普通逗号', JSON.stringify(U.parseCSV('a,b\n1,2')) === JSON.stringify([['a', 'b'], ['1', '2']]));
+ok('CSV：引号里的逗号不算分隔符', U.parseCSV('"张,三",18')[0][0] === '张,三');
+ok('CSV："" 表示一个引号', U.parseCSV('"他说""好""",1')[0][0] === '他说"好"');
+ok('CSV：字段里可以有换行', U.parseCSV('"第一行\n第二行",x')[0][0] === '第一行\n第二行');
+ok('CSV：CRLF 换行', U.parseCSV('a,b\r\n1,2').length === 2);
+ok('CSV：自动识别制表符（Excel 复制粘贴）',
+  U.parseCSV('姓名\t班级\n张三\t高一(1)班')[1][1] === '高一(1)班',
+  JSON.stringify(U.parseCSV('姓名\t班级\n张三\t高一(1)班')));
+ok('CSV：吃掉 BOM', U.parseCSV('\uFEFF姓名,班级')[0][0] === '姓名');
+ok('CSV：跳过空行', U.parseCSV('a\n\n\nb').length === 2);
+ok('CSV：末尾没有换行也能读到最后一个字段', U.parseCSV('a,b\n1,2')[1][1] === '2');
+
+section('14.1 导出名册');
+
+var ms = Store.create({ adapter: Storage.createMemoryAdapter() });
+ms.addStudent({ name: '张三', className: '高一(1)班', studentNo: '001', phone: '13800000000', note: '走读' });
+ms.addStudent({ name: '李四', className: '高一(1)班' });
+
+var mCsv = ms.exportStudentsRoster();
+ok('导出：带 BOM（Excel 打开中文不乱码）', mCsv.charCodeAt(0) === 0xFEFF);
+ok('导出：表头是姓名/班级/学号/电话/备注',
+  mCsv.replace(/^\uFEFF/, '').split('\r\n')[0] === '姓名,班级,学号,电话,备注',
+  mCsv.split('\r\n')[0]);
+ok('导出：学生行完整', mCsv.indexOf('张三,高一(1)班,001,13800000000,走读') > 0);
+ok('导出：按姓名的拼音顺序排（不是录入顺序）',
+  (U.compareName('张三', '李四') < 0)
+    ? mCsv.indexOf('张三') < mCsv.indexOf('李四')
+    : mCsv.indexOf('李四') < mCsv.indexOf('张三'));
+
+var rtA = Store.create({ adapter: Storage.createMemoryAdapter() });
+rtA.addStudent({ name: '往返', className: '一班', studentNo: '9', phone: '13900000000', note: '备注' });
+var rtB = Store.create({ adapter: Storage.createMemoryAdapter() });
+var rtRes = rtB.importStudentsCSV(rtA.exportStudentsRoster());
+ok('往返：自己导出的文件能原样导回', rtRes.added === 1 && rtB.listStudents().length === 1);
+ok('往返：字段一个不差',
+  rtB.findStudentByName('往返').studentNo === '9' &&
+  rtB.findStudentByName('往返').phone === '13900000000' &&
+  rtB.findStudentByName('往返').note === '备注');
+
+section('14.2 预览（不落库）');
+
+var ns = Store.create({ adapter: Storage.createMemoryAdapter() });
+ns.addStudent({ name: '张三', className: '高一(1)班', phone: '13800000000', note: '走读' });
+
+var importText =
+  '姓名,班级,学号,电话,备注\r\n' +
+  '张三,高一(1)班,,13911112222,\r\n' +      // 库里已有
+  '李四,高一(1)班,002,,\r\n' +
+  '王五,高一(2)班,003,,\r\n' +
+  ',高一(2)班,004,,\r\n' +                   // 缺姓名
+  '李四,高一(1)班,999,,';                    // 同一份名单里重复
+
+var pv = ns.previewStudentsCSV(importText);
+ok('预览：识别到表头', pv.hasHeader === true);
+ok('预览：数据行 5 行', pv.total === 5, pv.total);
+ok('预览：可导入 3 条', pv.valid.length === 3, pv.valid.length);
+ok('预览：识别出 1 个库里已有', pv.duplicates === 1, pv.duplicates);
+ok('预览：2 行读不懂（缺姓名 / 同文件重复）', pv.invalid.length === 2, JSON.stringify(pv.invalid));
+ok('预览：报的是 Excel 行号（第 5 行缺姓名）', pv.invalid[0].line === 5, pv.invalid[0] && pv.invalid[0].line);
+ok('预览：同文件重复会指出跟哪行重了',
+  pv.invalid[1].reason.indexOf('第 3 行') >= 0, pv.invalid[1] && pv.invalid[1].reason);
+ok('预览：不写库（学生数没变）', ns.listStudents().length === 1, ns.listStudents().length);
+
+section('14.3 导入：skip / update');
+
+var r1 = ns.importStudentsCSV(importText, { mode: 'skip' });
+ok('skip：新增 2 人', r1.added === 2, r1.added);
+ok('skip：跳过 1 人（张三已存在）', r1.skipped === 1, r1.skipped);
+ok('skip：不覆盖已有电话', ns.findStudentByName('张三').phone === '13800000000');
+ok('skip：总人数 3', ns.listStudents().length === 3, ns.listStudents().length);
+ok('skip：新人的班级/学号正确',
+  ns.findStudentByName('李四').className === '高一(1)班' &&
+  ns.findStudentByName('王五').studentNo === '003');
+
+var r2 = ns.importStudentsCSV('姓名,班级,电话,备注\n张三,高一(1)班,13911112222,住校', { mode: 'update' });
+ok('update：更新 1 人', r2.updated === 1, r2.updated);
+var zs = ns.findStudentByName('张三');
+ok('update：电话被更新', zs.phone === '13911112222', zs.phone);
+ok('update：备注被更新', zs.note === '住校', zs.note);
+ok('update：班级保持不变', zs.className === '高一(1)班');
+ok('update：没有多出人来', ns.listStudents().length === 3, ns.listStudents().length);
+
+ns.importStudentsCSV('姓名,班级,电话,备注\n张三,高一(1)班,,', { mode: 'update' });
+var zs2 = ns.findStudentByName('张三');
+ok('update：空单元格不会把已有值清空', zs2.phone === '13911112222' && zs2.note === '住校');
+
+section('14.4 导入的边界');
+
+ok('能按「无表头」的默认列顺序读',
+  (function () {
+    var s = Store.create({ adapter: Storage.createMemoryAdapter() });
+    s.importStudentsCSV('赵六,高一(3)班,006,13700000000,备注');
+    var z = s.findStudentByName('赵六');
+    return z && z.className === '高一(3)班' && z.studentNo === '006' && z.phone === '13700000000';
+  })());
+
+ok('空文件不报错也不加人',
+  (function () {
+    var s = Store.create({ adapter: Storage.createMemoryAdapter() });
+    var r = s.importStudentsCSV('');
+    return r.added === 0 && s.listStudents().length === 0;
+  })());
+
+ok('只有表头时什么也不加',
+  (function () {
+    var s = Store.create({ adapter: Storage.createMemoryAdapter() });
+    var r = s.importStudentsCSV('姓名,班级\n');
+    return r.added === 0 && s.listStudents().length === 0;
+  })());
+
+ok('导入后能用拼音搜到新人',
+  (function () {
+    var s = Store.create({ adapter: Storage.createMemoryAdapter() });
+    s.importStudentsCSV('姓名,班级\n张小明,高一(1)班\n郑佳堡,高一(1)班');
+    return s.listStudents('zxm')[0].name === '张小明' && s.listStudents('zjb')[0].name === '郑佳堡';
+  })());
+
+ok('整批导入只写一次存储（30 人也不卡）',
+  (function () {
+    var mem = Storage.createMemoryAdapter();
+    var writes = 0;
+    var origSet = mem.setItem;
+    mem.setItem = function (k, v) { writes++; return origSet.call(mem, k, v); };
+    var s = Store.create({ adapter: mem });
+    writes = 0;
+    s.importStudentsCSV('姓名,班级\n甲,一班\n乙,一班\n丙,一班');
+    return writes === 1 && s.listStudents().length === 3;
+  })());
+
+/* ================================================================ */
 console.log('\n========================================');
 console.log('核心逻辑测试：通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 if (fail) process.exitCode = 1;

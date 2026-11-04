@@ -497,6 +497,8 @@ h = safeRender('Students').html;
 ok('显示示例学生', h.indexOf('张小明') > 0);
 ok('有未结清/已结清标记', h.indexOf('未结清') > 0 || h.indexOf('已结清') > 0);
 ok('有结清按钮', h.indexOf('结清全部') > 0);
+ok('有「导入名单」按钮', h.indexOf('data-action="import-csv"') > 0);
+ok('有「导出名单」按钮', h.indexOf('data-action="export-csv"') > 0);
 ok('学生页不再出现页数', h.indexOf('页') < 0);
 
 section('统计页：批次汇总与人均张数');

@@ -273,6 +273,64 @@
     return '\uFEFF' + toCSV(rows);
   }
 
+  /** 猜分隔符：Excel 复制粘贴是制表符，另存为 CSV 是逗号 */
+  function detectDelimiter(text) {
+    var firstLine = String(text || '').split(/\r?\n/)[0] || '';
+    var tabs = (firstLine.match(/\t/g) || []).length;
+    var commas = (firstLine.match(/,/g) || []).length;
+    return tabs > commas ? '\t' : ',';
+  }
+
+  /**
+   * 解析 CSV / TSV 文本 => 二维数组
+   * ---------------------------------------------------------------
+   * 手写状态机，不用正则硬切（否则字段里的逗号、引号、换行全会炸）：
+   *   - 支持 "带引号的字段"，内部 "" 表示一个引号，可以包含逗号和换行；
+   *   - 自动识别逗号 / 制表符；去掉 BOM；
+   *   - 跳过完全空行（Excel 末尾常有一堆空行）。
+   */
+  function parseCSV(text, opts) {
+    var src = String(text == null ? '' : text).replace(/^\uFEFF/, '');
+    var delim = (opts && opts.delimiter) || detectDelimiter(src);
+
+    var rows = [], row = [], field = '', quoted = false;
+
+    for (var i = 0; i < src.length; i++) {
+      var ch = src.charAt(i);
+
+      if (quoted) {
+        if (ch === '"') {
+          if (src.charAt(i + 1) === '"') { field += '"'; i++; }
+          else quoted = false;
+        } else {
+          field += ch;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        quoted = true;
+      } else if (ch === delim) {
+        row.push(field); field = '';
+      } else if (ch === '\n') {
+        row.push(field); field = '';
+        rows.push(row); row = [];
+      } else if (ch === '\r') {
+        if (src.charAt(i + 1) !== '\n') {   // 单独的 \r 也算换行
+          row.push(field); field = '';
+          rows.push(row); row = [];
+        }
+      } else {
+        field += ch;
+      }
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+
+    return rows.filter(function (r) {
+      return r.some(function (c) { return String(c).trim() !== ''; });
+    });
+  }
+
   return {
     WEEKS: WEEKS,
     pad2: pad2,
@@ -309,6 +367,8 @@
     debounce: debounce,
     csvCell: csvCell,
     toCSV: toCSV,
-    excelCSV: excelCSV
+    excelCSV: excelCSV,
+    detectDelimiter: detectDelimiter,
+    parseCSV: parseCSV
   };
 });

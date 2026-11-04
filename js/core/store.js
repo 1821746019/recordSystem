@@ -261,6 +261,53 @@
         return null;
       }
 
+      /* ---------- 学生名册 CSV：表头识别 ---------- */
+
+      var STUDENT_COLUMNS = {
+        name: ['姓名', '名字', '学生', '学生姓名', 'name'],
+        className: ['班级', '班', '所在班级', 'class', 'classname'],
+        studentNo: ['学号', '学籍号', '考号', '编号', 'no', 'studentno'],
+        phone: ['电话', '手机', '手机号', '联系电话', '联系方式', 'phone', 'mobile', 'tel'],
+        note: ['备注', '说明', 'note', 'remark']
+      };
+
+      /** 归一化表头文字：去空白、去掉括号里的补充说明、转小写 */
+      function normHeader(v) {
+        return Utils.trim(v)
+          .replace(/[\s\u3000]+/g, '')
+          .replace(/[（(].*?[)）]/g, '')
+          .toLowerCase();
+      }
+
+      /**
+       * 猜列位置
+       * 认得出表头就按表头映射（顺序随便、缺列也行）；认不出就按
+       * 「姓名, 班级, 学号, 电话, 备注」的默认顺序读。
+       */
+      function guessColumns(cells) {
+        var DEFAULT = { name: 0, className: 1, studentNo: 2, phone: 3, note: 4 };
+        var map = {}, hit = 0;
+
+        Object.keys(STUDENT_COLUMNS).forEach(function (field) {
+          var aliases = STUDENT_COLUMNS[field];
+          for (var i = 0; i < cells.length; i++) {
+            var h = normHeader(cells[i]);
+            if (h && aliases.indexOf(h) >= 0) { map[field] = i; hit++; break; }
+          }
+        });
+
+        var first = normHeader(cells[0]);
+        var hasHeader = hit >= 2 ||
+          (hit >= 1 && STUDENT_COLUMNS.name.indexOf(first) >= 0);
+
+        if (!hasHeader) return { map: DEFAULT, hasHeader: false };
+
+        Object.keys(DEFAULT).forEach(function (f) {
+          if (map[f] == null) map[f] = DEFAULT[f];
+        });
+        return { map: map, hasHeader: true };
+      }
+
       function findRecord(id) {
         for (var i = 0; i < state.records.length; i++) {
           if (state.records[i].id === id) return state.records[i];
@@ -400,6 +447,134 @@
           if (!n) return null;
           var hit = state.students.filter(function (s) { return s.name === n; })[0];
           return hit ? Utils.deepClone(hit) : null;
+        },
+
+        /* ===== 学生名册导入 / 导出（CSV） ===== */
+
+        /**
+         * 导出学生名册（原始的档案字段，导出的文件可以直接再导入）
+         * 注意和 exportStudentsCSV 的区别：那个是统计页的「学生汇总报表」，带金额，
+         * 是给人看的；这个是给系统吃的名单。
+         */
+        exportStudentsRoster: function () {
+          var rows = [['姓名', '班级', '学号', '电话', '备注']];
+          state.students.slice()
+            .sort(function (a, b) { return Utils.compareName(a.name, b.name); })
+            .forEach(function (s) {
+              rows.push([s.name, s.className, s.studentNo, s.phone, s.note]);
+            });
+          return Utils.excelCSV(rows);
+        },
+
+        /**
+         * 预览导入：只解析、不落库（让用户先看清会新增/跳过多少人）
+         * @param {String} text CSV / TSV 文本
+         * @return {Object} { total, valid, invalid, duplicates, hasHeader }
+         */
+        previewStudentsCSV: function (text) {
+          var rows = Utils.parseCSV(text);
+          var out = { total: 0, valid: [], invalid: [], duplicates: 0, hasHeader: false };
+          if (!rows.length) return out;
+
+          var cols = guessColumns(rows[0]);
+          out.hasHeader = cols.hasHeader;
+          var body = cols.hasHeader ? rows.slice(1) : rows;
+
+          if (body.length > 5000) {
+            throw new Error('名单有 ' + body.length + ' 行，太大了，请分批导入');
+          }
+
+          // 库里已有的：name + 班级 视为同一个人
+          var known = {};
+          state.students.forEach(function (s) {
+            known[s.name + '\u0001' + s.className] = s.id;
+          });
+
+          var inFile = {};   // 同一份名单里的重复
+
+          body.forEach(function (cells, n) {
+            var line = n + (cols.hasHeader ? 2 : 1);   // 对应 Excel 里的行号
+
+            function take(field) {
+              var i = cols.map[field];
+              if (i == null) return '';
+              return Utils.trim(String(cells[i] == null ? '' : cells[i]));
+            }
+
+            var name = take('name');
+            if (!name) { out.invalid.push({ line: line, reason: '没有姓名' }); return; }
+            if (name.length > 40) { out.invalid.push({ line: line, reason: '姓名过长' }); return; }
+
+            var item = {
+              line: line,
+              name: name,
+              className: take('className'),
+              studentNo: take('studentNo'),
+              phone: take('phone'),
+              note: take('note'),
+              existingId: ''
+            };
+
+            var key = item.name + '\u0001' + item.className;
+            if (inFile[key]) {
+              out.invalid.push({ line: line, reason: '与第 ' + inFile[key] + ' 行重复' });
+              return;
+            }
+            inFile[key] = line;
+
+            item.existingId = known[key] || '';
+            if (item.existingId) out.duplicates++;
+
+            out.valid.push(item);
+          });
+
+          out.total = body.length;
+          return out;
+        },
+
+        /**
+         * 导入学生名册
+         * @param {String} text CSV / TSV
+         * @param {Object} opts { mode: 'skip'(默认，跳过已存在的) | 'update'(更新电话/学号/备注) }
+         * @return {Object} { added, updated, skipped, invalid }
+         */
+        importStudentsCSV: function (text, opts) {
+          opts = opts || {};
+          var preview = api.previewStudentsCSV(text);
+          var mode = opts.mode === 'update' ? 'update' : 'skip';
+          var now = Date.now();
+          var added = 0, updated = 0, skipped = 0;
+
+          preview.valid.forEach(function (row) {
+            var target = row.existingId ? findStudent(row.existingId) : null;
+
+            if (target) {
+              if (mode !== 'update') { skipped++; return; }
+              if (row.studentNo) target.studentNo = row.studentNo;
+              if (row.phone) target.phone = row.phone;
+              if (row.note) target.note = row.note;
+              target.updatedAt = now;
+              updated++;
+              return;
+            }
+
+            state.students.push({
+              id: Utils.uid('stu'),
+              name: row.name,
+              className: row.className,
+              studentNo: row.studentNo,
+              phone: row.phone,
+              note: row.note,
+              createdAt: now,
+              updatedAt: now
+            });
+            added++;
+          });
+
+          // 整批只写一次存储（30 个学生也只触发一次重绘）
+          if (added || updated) commit();
+
+          return { added: added, updated: updated, skipped: skipped, invalid: preview.invalid };
         },
 
         /**
